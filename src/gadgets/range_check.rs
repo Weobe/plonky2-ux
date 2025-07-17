@@ -6,15 +6,17 @@ use plonky2::hash::hash_types::RichField;
 use plonky2::iop::target::Target;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 
-use crate::gadgets::arithmetic_u32::U32Target;
-use crate::gates::range_check_u32::U32RangeCheckGate;
+use crate::{
+    gates::range_check_ux::UXRangeCheckGate,
+    gadgets::arithmetic_ux::UXTarget
+};
 
-pub fn range_check_u32_circuit<F: RichField + Extendable<D>, const D: usize>(
+pub fn range_check_ux_circuit<F: RichField + Extendable<D>, const D: usize, const BITS: usize>(
     builder: &mut CircuitBuilder<F, D>,
-    vals: Vec<U32Target>,
+    vals: Vec<UXTarget<BITS>>
 ) {
     let num_input_limbs = vals.len();
-    let gate = U32RangeCheckGate::<F, D>::new(num_input_limbs);
+    let gate = UXRangeCheckGate::<F, D, BITS>::new(num_input_limbs);
     let row = builder.add_gate(gate, vec![]);
 
     for i in 0..num_input_limbs {

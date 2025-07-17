@@ -1,26 +1,26 @@
 use alloc::vec::Vec;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
-use crate::gadgets::arithmetic_u32::U32Target;
+use crate::gadgets::arithmetic_ux::UXTarget;
 
-pub trait WriteU32 {
-    fn write_target_u32(&mut self, x: U32Target) -> IoResult<()>;
+pub trait WriteUX <const BITS: usize> {
+    fn write_target_ux(&mut self, x: UXTarget<BITS>) -> IoResult<()>;
 }
 
-impl WriteU32 for Vec<u8> {
+impl <const BITS: usize> WriteUX<BITS> for Vec<u8> {
     #[inline]
-    fn write_target_u32(&mut self, x: U32Target) -> IoResult<()> {
+    fn write_target_ux(&mut self, x: UXTarget<BITS>) -> IoResult<()> {
         self.write_target(x.0)
     }
 }
 
-pub trait ReadU32 {
-    fn read_target_u32(&mut self) -> IoResult<U32Target>;
+pub trait ReadUX <const BITS: usize>{
+    fn read_target_ux(&mut self) -> IoResult<UXTarget<BITS>>;
 }
 
-impl ReadU32 for Buffer<'_> {
+impl <const BITS: usize> ReadUX<BITS> for Buffer<'_> {
     #[inline]
-    fn read_target_u32(&mut self) -> IoResult<U32Target> {
-        Ok(U32Target(self.read_target()?))
+    fn read_target_ux(&mut self) -> IoResult<UXTarget<BITS>> {
+        Ok(UXTarget(self.read_target()?))
     }
 }

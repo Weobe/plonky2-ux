@@ -22,24 +22,34 @@ use plonky2::plonk::vars::{EvaluationTargets, EvaluationVars, EvaluationVarsBase
 
 /// A gate which can decompose a number into base B little-endian limbs.
 #[derive(Copy, Clone, Debug)]
-pub struct U32RangeCheckGate<F: RichField + Extendable<D>, const D: usize> {
+pub struct UXRangeCheckGate<F: RichField + Extendable<D>, const D: usize, const BITS: usize> {
     pub num_input_limbs: usize,
     _phantom: PhantomData<F>,
 }
 
-impl<F: RichField + Extendable<D>, const D: usize> U32RangeCheckGate<F, D> {
+pub(crate) const fn compute_remainder(a: usize, b: usize) -> usize {
+    let rem = a % b;
+    if rem != 0 {
+        rem
+    } else {
+        b
+    }
+}
+
+impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> UXRangeCheckGate<F, D, BITS> {
     pub fn new(num_input_limbs: usize) -> Self {
         Self {
             num_input_limbs,
             _phantom: PhantomData,
         }
     }
-
-    pub const AUX_LIMB_BITS: usize = 2;
+    
+    pub const AUX_LIMB_BITS: usize = 3;
     pub const BASE: usize = 1 << Self::AUX_LIMB_BITS;
+    pub const LAST_BASE: usize = 1 << (compute_remainder(BITS, Self::AUX_LIMB_BITS));
 
     fn aux_limbs_per_input_limb(&self) -> usize {
-        div_ceil(32, Self::AUX_LIMB_BITS)
+        div_ceil(BITS, Self::AUX_LIMB_BITS)
     }
     pub fn wire_ith_input_limb(&self, i: usize) -> usize {
         debug_assert!(i < self.num_input_limbs);
@@ -52,7 +62,7 @@ impl<F: RichField + Extendable<D>, const D: usize> U32RangeCheckGate<F, D> {
     }
 }
 
-impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for U32RangeCheckGate<F, D> {
+impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D> for UXRangeCheckGate<F, D, BITS> {
     fn id(&self) -> String {
         format!("{self:?}")
     }
@@ -81,12 +91,22 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for U32RangeCheckG
             let computed_sum = reduce_with_powers(&aux_limbs, base);
 
             constraints.push(computed_sum - input_limb);
-            for aux_limb in aux_limbs {
-                constraints.push(
-                    (0..Self::BASE)
-                        .map(|i| aux_limb - F::Extension::from_canonical_usize(i))
-                        .product(),
-                );
+            for i in 0..aux_limbs.len() {
+                let aux_limb = aux_limbs[i];
+                if i + 1 < aux_limbs.len(){
+                    constraints.push(
+                        (0..Self::BASE)
+                            .map(|i| aux_limb - F::Extension::from_canonical_usize(i))
+                            .product(),
+                    );
+                } else{
+                    constraints.push(
+                        (0..Self::LAST_BASE)
+                            .map(|i| aux_limb - F::Extension::from_canonical_usize(i))
+                            .product(),
+                    );
+                }
+                
             }
         }
 
@@ -107,12 +127,22 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for U32RangeCheckG
             let computed_sum = reduce_with_powers(&aux_limbs, base);
 
             yield_constr.one(computed_sum - input_limb);
-            for aux_limb in aux_limbs {
-                yield_constr.one(
-                    (0..Self::BASE)
-                        .map(|i| aux_limb - F::from_canonical_usize(i))
-                        .product(),
-                );
+            for i in 0..aux_limbs.len() {
+                let aux_limb = aux_limbs[i];
+                if i + 1 < aux_limbs.len(){
+                        yield_constr.one(
+                        (0..Self::BASE)
+                            .map(|i| aux_limb - F::from_canonical_usize(i))
+                            .product(),
+                    );
+                } else{
+                    yield_constr.one(
+                        (0..Self::LAST_BASE)
+                            .map(|i| aux_limb - F::from_canonical_usize(i))
+                            .product(),
+                    );
+                }
+                
             }
         }
     }
@@ -133,19 +163,36 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for U32RangeCheckG
             let computed_sum = reduce_with_powers_ext_circuit(builder, &aux_limbs, base);
 
             constraints.push(builder.sub_extension(computed_sum, input_limb));
-            for aux_limb in aux_limbs {
-                constraints.push({
-                    let mut acc = builder.one_extension();
-                    (0..Self::BASE).for_each(|i| {
-                        // We update our accumulator as:
-                        // acc' = acc (x - i)
-                        //      = acc x + (-i) acc
-                        // Since -i is constant, we can do this in one arithmetic_extension call.
-                        let neg_i = -F::from_canonical_usize(i);
-                        acc = builder.arithmetic_extension(F::ONE, neg_i, acc, aux_limb, acc)
+            for i in 0..aux_limbs.len() {
+                let aux_limb = aux_limbs[i];
+                if i + 1 < aux_limbs.len(){
+                    constraints.push({
+                        let mut acc = builder.one_extension();
+                        (0..Self::BASE).for_each(|i| {
+                            // We update our accumulator as:
+                            // acc' = acc (x - i)
+                            //      = acc x + (-i) acc
+                            // Since -i is constant, we can do this in one arithmetic_extension call.
+                            let neg_i = -F::from_canonical_usize(i);
+                            acc = builder.arithmetic_extension(F::ONE, neg_i, acc, aux_limb, acc)
+                        });
+                        acc
                     });
-                    acc
-                });
+                } else{
+                    constraints.push({
+                        let mut acc = builder.one_extension();
+                        (0..Self::LAST_BASE).for_each(|i| {
+                            // We update our accumulator as:
+                            // acc' = acc (x - i)
+                            //      = acc x + (-i) acc
+                            // Since -i is constant, we can do this in one arithmetic_extension call.
+                            let neg_i = -F::from_canonical_usize(i);
+                            acc = builder.arithmetic_extension(F::ONE, neg_i, acc, aux_limb, acc)
+                        });
+                        acc
+                    });
+                }
+                
             }
         }
 
@@ -153,7 +200,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for U32RangeCheckG
     }
 
     fn generators(&self, row: usize, _local_constants: &[F]) -> Vec<WitnessGeneratorRef<F, D>> {
-        let gen = U32RangeCheckGenerator { gate: *self, row };
+        let gen = UXRangeCheckGenerator { gate: *self, row };
         vec![WitnessGeneratorRef::new(gen.adapter())]
     }
 
@@ -177,16 +224,16 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for U32RangeCheckG
 }
 
 #[derive(Debug)]
-pub struct U32RangeCheckGenerator<F: RichField + Extendable<D>, const D: usize> {
-    gate: U32RangeCheckGate<F, D>,
+pub struct UXRangeCheckGenerator<F: RichField + Extendable<D>, const D: usize, const BITS: usize> {
+    gate: UXRangeCheckGate<F, D, BITS>,
     row: usize,
 }
 
-impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
-    for U32RangeCheckGenerator<F, D>
+impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> SimpleGenerator<F, D>
+    for UXRangeCheckGenerator<F, D, BITS>
 {
     fn id(&self) -> String {
-        "U32RangeCheckGenerator".to_string()
+        "UXRangeCheckGenerator".to_string()
     }
 
     fn dependencies(&self) -> Vec<Target> {
@@ -205,16 +252,16 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
         for i in 0..num_input_limbs {
             let sum_value = witness
                 .get_target(Target::wire(self.row, self.gate.wire_ith_input_limb(i)))
-                .to_canonical_u64() as u32;
+                .to_canonical_u64();
 
-            let base = U32RangeCheckGate::<F, D>::BASE as u32;
+            let base = UXRangeCheckGate::<F, D, BITS>::BASE as u64;
             let limbs = (0..self.gate.aux_limbs_per_input_limb())
                 .map(|j| Target::wire(self.row, self.gate.wire_ith_input_limb_jth_aux_limb(i, j)));
             let limbs_value = (0..self.gate.aux_limbs_per_input_limb())
                 .scan(sum_value, |acc, _| {
                     let tmp = *acc % base;
                     *acc /= base;
-                    Some(F::from_canonical_u32(tmp))
+                    Some(F::from_canonical_u64(tmp))
                 })
                 .collect::<Vec<_>>();
 
@@ -232,7 +279,7 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
     }
 
     fn deserialize(src: &mut Buffer, common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
-        let gate = U32RangeCheckGate::deserialize(src, common_data)?;
+        let gate = UXRangeCheckGate::deserialize(src, common_data)?;
         let row = src.read_usize()?;
         Ok(Self { row, gate })
     }
@@ -253,9 +300,10 @@ mod tests {
 
     use super::*;
 
+    const BITS: usize = 29;
     #[test]
     fn low_degree() {
-        test_low_degree::<GoldilocksField, _, 4>(U32RangeCheckGate::new(8))
+        test_low_degree::<GoldilocksField, _, 4>(UXRangeCheckGate::<GoldilocksField, 4, BITS>::new(8))
     }
 
     #[test]
@@ -263,16 +311,16 @@ mod tests {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
-        test_eval_fns::<F, C, _, D>(U32RangeCheckGate::new(8))
+        test_eval_fns::<F, C, _, D>(UXRangeCheckGate::<F, D, BITS>::new(8))
     }
 
     fn test_gate_constraint(input_limbs: Vec<u64>) {
         type F = GoldilocksField;
         type FF = QuarticExtension<GoldilocksField>;
         const D: usize = 4;
-        const AUX_LIMB_BITS: usize = 2;
+        const AUX_LIMB_BITS: usize = 3;
         const BASE: usize = 1 << AUX_LIMB_BITS;
-        const AUX_LIMBS_PER_INPUT_LIMB: usize = 32_usize.div_ceil(AUX_LIMB_BITS);
+        const AUX_LIMBS_PER_INPUT_LIMB: usize = BITS.div_ceil(AUX_LIMB_BITS);
 
         fn get_wires(input_limbs: Vec<u64>) -> Vec<FF> {
             let num_input_limbs = input_limbs.len();
@@ -306,7 +354,7 @@ mod tests {
                 .collect()
         }
 
-        let gate = U32RangeCheckGate::<F, D> {
+        let gate = UXRangeCheckGate::<F, D, BITS> {
             num_input_limbs: 8,
             _phantom: PhantomData,
         };
@@ -326,7 +374,8 @@ mod tests {
     #[test]
     fn test_gate_constraint_good() {
         let mut rng = OsRng;
-        let input_limbs: Vec<_> = (0..8).map(|_| rng.gen::<u32>() as u64).collect();
+        let modd = 1u32 << BITS;
+        let input_limbs: Vec<_> = (0..8).map(|_| (rng.gen::<u32>() % modd) as u64).collect();
 
         test_gate_constraint(input_limbs);
     }
