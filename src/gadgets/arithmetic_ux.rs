@@ -322,7 +322,7 @@ mod tests {
         let mut sum = 0u64;
         let modd = 1u64 << BITS;
         for _ in 0..NUM_ADDENDS {
-            let x: u32 = rng.gen::<u32>() % modd;
+            let x: u32 = (rng.gen::<u64>() % modd).try_into()?;
             sum += x as u64;
             to_add.push(builder.constant_ux(x as u32));
         }
