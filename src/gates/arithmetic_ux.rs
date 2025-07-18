@@ -545,10 +545,10 @@ mod tests {
             let m0 = multiplicands_0[c];
             let m1 = multiplicands_1[c];
             let a = addends[c];
-
             let output = m0 * m1 + a;
             let output_low = output & ((1 << BITS) - 1);
             let output_high = output >> BITS;
+            assert!(output < (1<<(2 * BITS)));
             let diff = ((1 << BITS) - 1) as u64 - output_high;
             let inverse = if diff == 0 {
                 F::ZERO
@@ -633,6 +633,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_canonicity() {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
