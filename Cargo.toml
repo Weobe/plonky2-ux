@@ -1,6 +1,6 @@
 [package]
-name = "plonky2_u32"
-description = "u32 gadget for Plonky2"
+name = "plonky2_ux"
+description = "ux gadget for Plonky2"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/mir-protocol/plonky2"
