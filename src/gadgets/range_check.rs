@@ -6,14 +6,11 @@ use plonky2::hash::hash_types::RichField;
 use plonky2::iop::target::Target;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 
-use crate::{
-    gates::range_check_ux::UXRangeCheckGate,
-    gadgets::arithmetic_ux::UXTarget
-};
+use crate::{gadgets::arithmetic_ux::UXTarget, gates::range_check_ux::UXRangeCheckGate};
 
 pub fn range_check_ux_circuit<F: RichField + Extendable<D>, const D: usize, const BITS: usize>(
     builder: &mut CircuitBuilder<F, D>,
-    vals: Vec<UXTarget<BITS>>
+    vals: Vec<UXTarget<BITS>>,
 ) {
     let num_input_limbs = vals.len();
     let gate = UXRangeCheckGate::<F, D, BITS>::new(num_input_limbs);

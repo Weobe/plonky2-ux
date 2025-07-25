@@ -1,9 +1,9 @@
+use crate::gates::range_check_ux::compute_remainder;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, vec};
 use anyhow::Result;
 use core::marker::PhantomData;
-use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use num::integer::div_ceil;
 use plonky2::field::extension::Extendable;
 use plonky2::field::packed::PackedField;
@@ -23,7 +23,7 @@ use plonky2::plonk::vars::{
     EvaluationTargets, EvaluationVars, EvaluationVarsBase, EvaluationVarsBaseBatch,
     EvaluationVarsBasePacked,
 };
-use crate::gates::range_check_ux::compute_remainder;
+use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
 /// A gate to perform a subtraction on BITS-bit limbs: given `x`, `y`, and `borrow`, it returns
 /// the result `x - y - borrow` and, if this underflows, a new `borrow`. Inputs are not range-checked.
@@ -33,7 +33,9 @@ pub struct UXSubtractionGate<F: RichField + Extendable<D>, const D: usize, const
     _phantom: PhantomData<F>,
 }
 
-impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> UXSubtractionGate<F, D, BITS> {
+impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize>
+    UXSubtractionGate<F, D, BITS>
+{
     pub fn new_from_config(config: &CircuitConfig) -> Self {
         Self {
             num_ops: Self::num_ops(config),
@@ -44,7 +46,6 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> UXSubtract
     pub const AUX_LIMB_BITS: usize = 2;
     pub const BASE: usize = 1 << Self::AUX_LIMB_BITS;
     pub const LAST_BASE: usize = 1 << (compute_remainder(BITS, Self::AUX_LIMB_BITS));
-
 
     pub(crate) fn num_ops(config: &CircuitConfig) -> usize {
         let wires_per_op = 5 + Self::num_limbs();
@@ -89,7 +90,9 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> UXSubtract
     }
 }
 
-impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D> for UXSubtractionGate<F, D, BITS> {
+impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
+    for UXSubtractionGate<F, D, BITS>
+{
     fn id(&self) -> String {
         format!("{self:?}")
     }
@@ -124,18 +127,17 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
             let limb_base = F::Extension::from_canonical_u64(Self::BASE as u64);
             for j in (0..Self::num_limbs()).rev() {
                 let this_limb = vars.local_wires[self.wire_ith_output_jth_limb(i, j)];
-                if j + 1 < Self::num_limbs(){
+                if j + 1 < Self::num_limbs() {
                     let product = (0..Self::BASE)
                         .map(|x| this_limb - F::Extension::from_canonical_usize(x))
                         .product();
                     constraints.push(product);
-                } else{
+                } else {
                     let product = (0..Self::LAST_BASE)
                         .map(|x| this_limb - F::Extension::from_canonical_usize(x))
                         .product();
                     constraints.push(product);
                 }
-                
 
                 combined_limbs = limb_base * combined_limbs + this_limb;
             }
@@ -183,11 +185,11 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
 
             // Range-check output_result to be at most BITS bits.
             let mut combined_limbs = builder.zero_extension();
-            let limb_base = builder
-                .constant_extension(F::Extension::from_canonical_u64(Self::BASE as u64));
+            let limb_base =
+                builder.constant_extension(F::Extension::from_canonical_u64(Self::BASE as u64));
             for j in (0..Self::num_limbs()).rev() {
                 let this_limb = vars.local_wires[self.wire_ith_output_jth_limb(i, j)];
-                if j + 1 < Self::num_limbs(){
+                if j + 1 < Self::num_limbs() {
                     let mut product = builder.one_extension();
                     for x in 0..Self::BASE {
                         let x_target =
@@ -278,18 +280,18 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> PackedEval
             let limb_base = F::from_canonical_u64(Self::BASE as u64);
             for j in (0..Self::num_limbs()).rev() {
                 let this_limb = vars.local_wires[self.wire_ith_output_jth_limb(i, j)];
-                if j + 1 < Self::num_limbs(){
+                if j + 1 < Self::num_limbs() {
                     let product = (0..Self::BASE)
                         .map(|x| this_limb - F::from_canonical_usize(x))
                         .product();
                     yield_constr.one(product);
-                } else{
+                } else {
                     let product = (0..Self::LAST_BASE)
                         .map(|x| this_limb - F::from_canonical_usize(x))
                         .product();
                     yield_constr.one(product);
                 }
-                
+
                 combined_limbs = combined_limbs * limb_base + this_limb;
             }
             yield_constr.one(combined_limbs - output_result);
@@ -348,7 +350,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> SimpleGene
         } else {
             F::ZERO
         };
-        
+
         let base = F::from_canonical_u64(1u64 << BITS);
         let output_result = result_initial + base * output_borrow;
         let output_result_wire = local_wire(self.gate.wire_ith_output_result(self.i));

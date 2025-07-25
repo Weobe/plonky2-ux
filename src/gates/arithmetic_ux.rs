@@ -3,9 +3,10 @@ use alloc::vec::Vec;
 use alloc::{format, vec};
 use anyhow::Result;
 use core::marker::PhantomData;
-use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use num::integer::div_ceil;
+use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
+use crate::gates::range_check_ux::compute_remainder;
 use itertools::unfold;
 use plonky2::field::extension::Extendable;
 use plonky2::field::packed::PackedField;
@@ -25,7 +26,6 @@ use plonky2::plonk::vars::{
     EvaluationTargets, EvaluationVars, EvaluationVarsBase, EvaluationVarsBaseBatch,
     EvaluationVarsBasePacked,
 };
-use crate::gates::range_check_ux::compute_remainder;
 
 /// A gate to perform a basic mul-add on 32-bit values (we assume they are range-checked beforehand).
 #[derive(Copy, Clone, Debug)]
@@ -95,7 +95,9 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> UXArithmet
     }
 }
 
-impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D> for UXArithmeticGate<F, D, BITS> {
+impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
+    for UXArithmeticGate<F, D, BITS>
+{
     fn id(&self) -> String {
         format!("{self:?}")
     }
@@ -154,7 +156,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
             let base = F::Extension::from_canonical_u64(Self::BASE as u64);
             for j in (0..Self::num_limbs()).rev() {
                 let this_limb = vars.local_wires[self.wire_ith_output_jth_limb(i, j)];
-                if j + 1 != midpoint && j + 1 != Self::num_limbs(){
+                if j + 1 != midpoint && j + 1 != Self::num_limbs() {
                     let product = (0..Self::BASE)
                         .map(|x| this_limb - F::Extension::from_canonical_usize(x))
                         .product();
@@ -165,7 +167,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
                         .product();
                     constraints.push(product);
                 }
-                
+
                 if j < midpoint {
                     combined_low_limbs = base * combined_low_limbs + this_limb;
                 } else {
@@ -175,7 +177,6 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
             constraints.push(combined_low_limbs - output_low);
             constraints.push(combined_high_limbs - output_high);
         }
-        
 
         constraints
     }
@@ -215,8 +216,8 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
                 let base: F::Extension = F::from_canonical_u64(1u64 << BITS).into();
                 let base_target = builder.constant_extension(base);
                 let one = builder.one_extension();
-                let ux_max =
-                    builder.constant_extension(F::Extension::from_canonical_u64((1u64 << BITS) - 1));
+                let ux_max = builder
+                    .constant_extension(F::Extension::from_canonical_u64((1u64 << BITS) - 1));
 
                 // This is zero if and only if the high limb is `ux::MAX`.
                 let diff = builder.sub_extension(ux_max, output_high);
@@ -235,11 +236,11 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
             let mut combined_low_limbs = builder.zero_extension();
             let mut combined_high_limbs = builder.zero_extension();
             let midpoint = Self::num_limbs() / 2;
-            let base = builder
-                .constant_extension(F::Extension::from_canonical_u64(Self::BASE as u64));
+            let base =
+                builder.constant_extension(F::Extension::from_canonical_u64(Self::BASE as u64));
             for j in (0..Self::num_limbs()).rev() {
                 let this_limb = vars.local_wires[self.wire_ith_output_jth_limb(i, j)];
-                if j + 1 != midpoint && j + 1 != Self::num_limbs(){
+                if j + 1 != midpoint && j + 1 != Self::num_limbs() {
                     let mut product = builder.one_extension();
                     for x in 0..Self::BASE {
                         let x_target =
@@ -248,7 +249,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
                         product = builder.mul_extension(product, diff);
                     }
                     constraints.push(product);
-                } else{
+                } else {
                     let mut product = builder.one_extension();
                     for x in 0..Self::LAST_BASE {
                         let x_target =
@@ -356,19 +357,18 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> PackedEval
             let base = F::from_canonical_u64(Self::BASE as u64);
             for j in (0..Self::num_limbs()).rev() {
                 let this_limb = vars.local_wires[self.wire_ith_output_jth_limb(i, j)];
-                if j + 1 != midpoint && j + 1 != Self::num_limbs(){
+                if j + 1 != midpoint && j + 1 != Self::num_limbs() {
                     let product = (0..Self::BASE)
                         .map(|x| this_limb - F::from_canonical_usize(x))
                         .product();
                     yield_constr.one(product);
-
-                } else{
+                } else {
                     let product = (0..Self::LAST_BASE)
                         .map(|x| this_limb - F::from_canonical_usize(x))
                         .product();
                     yield_constr.one(product);
                 }
-                
+
                 if j < midpoint {
                     combined_low_limbs = combined_low_limbs * base + this_limb;
                 } else {
@@ -423,7 +423,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> SimpleGene
         let addend = get_local_wire(self.gate.wire_ith_addend(self.i));
 
         let output = multiplicand_0 * multiplicand_1 + addend;
-        let mut output_u64 = output.to_canonical_u64();
+        let output_u64 = output.to_canonical_u64();
 
         let mut output_high_u64 = output_u64 >> BITS;
         let mut output_low_u64 = output_u64 & ((1 << BITS) - 1);
@@ -437,7 +437,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> SimpleGene
         out_buffer.set_wire(output_high_wire, output_high)?;
         out_buffer.set_wire(output_low_wire, output_low)?;
 
-        let diff = ((1u64 << BITS) - 1) as u64 - output_high_u64;
+        let diff = (1u64 << BITS) - 1 - output_high_u64;
         let inverse = if diff == 0 {
             F::ZERO
         } else {
@@ -461,8 +461,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> SimpleGene
             Some(ret)
         })
         .take(midpoint);
-        let output_limbs_u64 = output_limbs_u64_low
-            .chain(output_limbs_u64_high);
+        let output_limbs_u64 = output_limbs_u64_low.chain(output_limbs_u64_high);
         let output_limbs_f = output_limbs_u64.map(F::from_canonical_u64);
 
         for (j, output_limb) in output_limbs_f.enumerate() {
@@ -537,7 +536,7 @@ mod tests {
     ) -> Vec<FF> {
         let mut v0 = Vec::new();
         let mut v1 = Vec::new();
-        
+
         let limb_bits = UXArithmeticGate::<F, D, BITS>::limb_bits();
         let num_limbs = UXArithmeticGate::<F, D, BITS>::num_limbs();
         let limb_base = 1 << limb_bits;
@@ -548,7 +547,7 @@ mod tests {
             let output = m0 * m1 + a;
             let output_low = output & ((1 << BITS) - 1);
             let output_high = output >> BITS;
-            assert!(output < (1<<(2 * BITS)));
+            assert!(output < (1 << (2 * BITS)));
             let diff = ((1 << BITS) - 1) as u64 - output_high;
             let inverse = if diff == 0 {
                 F::ZERO
@@ -620,9 +619,9 @@ mod tests {
             public_inputs_hash: &HashOut::rand(),
         };
         let constraints = gate.eval_unfiltered(vars);
-        for i in 0..constraints.len(){
+        for i in 0..constraints.len() {
             let x = constraints[i];
-            if !x.is_zero(){
+            if !x.is_zero() {
                 println!("This causes error: {}", i);
             }
         }

@@ -3,7 +3,7 @@ use plonky2::field::types::{Field, PrimeField64};
 use plonky2::iop::generator::GeneratedValues;
 use plonky2::iop::witness::{Witness, WitnessWrite};
 
-use crate::gadgets::arithmetic_ux::{UXTarget};
+use crate::gadgets::arithmetic_ux::UXTarget;
 
 pub trait WitnessUX<F: PrimeField64, const BITS: usize>: Witness<F> {
     fn set_ux_target(&mut self, target: UXTarget<BITS>, value: u32) -> Result<()>;

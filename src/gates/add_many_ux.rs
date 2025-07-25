@@ -6,6 +6,7 @@ use core::marker::PhantomData;
 use num::integer::div_ceil;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
+use crate::gates::range_check_ux::compute_remainder;
 use itertools::unfold;
 use plonky2::field::extension::Extendable;
 use plonky2::field::types::Field;
@@ -20,7 +21,6 @@ use plonky2::iop::witness::{PartitionWitness, Witness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData};
 use plonky2::plonk::vars::{EvaluationTargets, EvaluationVars, EvaluationVarsBase};
-use crate::gates::range_check_ux::compute_remainder;
 
 const LOG2_MAX_NUM_ADDENDS: usize = 4;
 const MAX_NUM_ADDENDS: usize = 16;
@@ -92,7 +92,9 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> UXAddManyG
     }
 }
 
-impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D> for UXAddManyGate<F, D, BITS> {
+impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
+    for UXAddManyGate<F, D, BITS>
+{
     fn id(&self) -> String {
         format!("{self:?}")
     }
@@ -135,7 +137,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
             let base = F::Extension::from_canonical_u64(Self::BASE as u64);
             for j in (0..Self::num_limbs()).rev() {
                 let this_limb = vars.local_wires[self.wire_ith_output_jth_limb(i, j)];
-                if j + 1 != Self::num_result_limbs(){
+                if j + 1 != Self::num_result_limbs() {
                     let product = (0..Self::BASE)
                         .map(|x| this_limb - F::Extension::from_canonical_usize(x))
                         .product();
@@ -146,7 +148,6 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
                         .product();
                     constraints.push(product);
                 }
-                
 
                 if j < Self::num_result_limbs() {
                     combined_result_limbs = base * combined_result_limbs + this_limb;
@@ -187,7 +188,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
             let base = F::from_canonical_u64(Self::BASE as u64);
             for j in (0..Self::num_limbs()).rev() {
                 let this_limb = vars.local_wires[self.wire_ith_output_jth_limb(i, j)];
-                if j + 1 != Self::num_result_limbs(){
+                if j + 1 != Self::num_result_limbs() {
                     let product = (0..Self::BASE)
                         .map(|x| this_limb - F::from_canonical_usize(x))
                         .product();
@@ -198,7 +199,6 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
                         .product();
                     yield_constr.one(product);
                 }
-                
 
                 if j < Self::num_result_limbs() {
                     combined_result_limbs = base * combined_result_limbs + this_limb;
@@ -241,11 +241,11 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
 
             let mut combined_result_limbs = builder.zero_extension();
             let mut combined_carry_limbs = builder.zero_extension();
-            let base = builder
-                .constant_extension(F::Extension::from_canonical_u64(Self::BASE as u64));
+            let base =
+                builder.constant_extension(F::Extension::from_canonical_u64(Self::BASE as u64));
             for j in (0..Self::num_limbs()).rev() {
                 let this_limb = vars.local_wires[self.wire_ith_output_jth_limb(i, j)];
-                if j + 1 != Self::num_result_limbs(){
+                if j + 1 != Self::num_result_limbs() {
                     let mut product = builder.one_extension();
                     for x in 0..Self::BASE {
                         let x_target =
@@ -264,7 +264,6 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
                     }
                     constraints.push(product);
                 }
-                
 
                 if j < Self::num_result_limbs() {
                     combined_result_limbs =
@@ -392,7 +391,6 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> SimpleGene
         let num_carry_limbs = UXAddManyGate::<F, D, BITS>::num_carry_limbs();
         let limb_base = UXAddManyGate::<F, D, BITS>::BASE as u64;
 
-       
         let split_to_limbs = |mut val, num| {
             unfold((), move |_| {
                 let ret = val % limb_base;

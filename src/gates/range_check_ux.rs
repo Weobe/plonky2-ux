@@ -43,7 +43,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> UXRangeChe
             _phantom: PhantomData,
         }
     }
-    
+
     pub const AUX_LIMB_BITS: usize = 3;
     pub const BASE: usize = 1 << Self::AUX_LIMB_BITS;
     pub const LAST_BASE: usize = 1 << (compute_remainder(BITS, Self::AUX_LIMB_BITS));
@@ -62,7 +62,9 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> UXRangeChe
     }
 }
 
-impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D> for UXRangeCheckGate<F, D, BITS> {
+impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
+    for UXRangeCheckGate<F, D, BITS>
+{
     fn id(&self) -> String {
         format!("{self:?}")
     }
@@ -93,20 +95,19 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
             constraints.push(computed_sum - input_limb);
             for i in 0..aux_limbs.len() {
                 let aux_limb = aux_limbs[i];
-                if i + 1 < aux_limbs.len(){
+                if i + 1 < aux_limbs.len() {
                     constraints.push(
                         (0..Self::BASE)
                             .map(|i| aux_limb - F::Extension::from_canonical_usize(i))
                             .product(),
                     );
-                } else{
+                } else {
                     constraints.push(
                         (0..Self::LAST_BASE)
                             .map(|i| aux_limb - F::Extension::from_canonical_usize(i))
                             .product(),
                     );
                 }
-                
             }
         }
 
@@ -129,20 +130,19 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
             yield_constr.one(computed_sum - input_limb);
             for i in 0..aux_limbs.len() {
                 let aux_limb = aux_limbs[i];
-                if i + 1 < aux_limbs.len(){
-                        yield_constr.one(
+                if i + 1 < aux_limbs.len() {
+                    yield_constr.one(
                         (0..Self::BASE)
                             .map(|i| aux_limb - F::from_canonical_usize(i))
                             .product(),
                     );
-                } else{
+                } else {
                     yield_constr.one(
                         (0..Self::LAST_BASE)
                             .map(|i| aux_limb - F::from_canonical_usize(i))
                             .product(),
                     );
                 }
-                
             }
         }
     }
@@ -165,7 +165,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
             constraints.push(builder.sub_extension(computed_sum, input_limb));
             for i in 0..aux_limbs.len() {
                 let aux_limb = aux_limbs[i];
-                if i + 1 < aux_limbs.len(){
+                if i + 1 < aux_limbs.len() {
                     constraints.push({
                         let mut acc = builder.one_extension();
                         (0..Self::BASE).for_each(|i| {
@@ -178,7 +178,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
                         });
                         acc
                     });
-                } else{
+                } else {
                     constraints.push({
                         let mut acc = builder.one_extension();
                         (0..Self::LAST_BASE).for_each(|i| {
@@ -192,7 +192,6 @@ impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> Gate<F, D>
                         acc
                     });
                 }
-                
             }
         }
 
@@ -303,7 +302,9 @@ mod tests {
     const BITS: usize = 29;
     #[test]
     fn low_degree() {
-        test_low_degree::<GoldilocksField, _, 4>(UXRangeCheckGate::<GoldilocksField, 4, BITS>::new(8))
+        test_low_degree::<GoldilocksField, _, 4>(UXRangeCheckGate::<GoldilocksField, 4, BITS>::new(
+            8,
+        ))
     }
 
     #[test]

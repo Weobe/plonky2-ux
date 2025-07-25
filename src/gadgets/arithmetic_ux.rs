@@ -1,25 +1,14 @@
-use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
-use anyhow::Result;
-use core::marker::PhantomData;
-use plonky2::plonk::circuit_data::CommonCircuitData;
-use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
 use plonky2::field::extension::Extendable;
 use plonky2::hash::hash_types::RichField;
-use plonky2::iop::generator::{GeneratedValues, SimpleGenerator};
 use plonky2::iop::target::Target;
-use plonky2::iop::witness::{PartitionWitness, Witness};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 
 use crate::gates::add_many_ux::UXAddManyGate;
 
 use crate::gates::arithmetic_ux::UXArithmeticGate;
 use crate::gates::subtraction_ux::UXSubtractionGate;
-use crate::serialization::{ReadUX, WriteUX};
-use crate::witness::GeneratedValuesUX;
-
 
 #[derive(Clone, Copy, Debug)]
 pub struct UXTarget<const BITS: usize>(pub Target);
@@ -51,11 +40,23 @@ pub trait CircuitBuilderUX<F: RichField + Extendable<D>, const D: usize> {
     ) -> Option<(UXTarget<BITS>, UXTarget<BITS>)>;
 
     // Returns x * y + z.
-    fn mul_add_ux<const BITS: usize>(&mut self, x: UXTarget<BITS>, y: UXTarget<BITS>, z: UXTarget<BITS>) -> (UXTarget<BITS>, UXTarget<BITS>);
+    fn mul_add_ux<const BITS: usize>(
+        &mut self,
+        x: UXTarget<BITS>,
+        y: UXTarget<BITS>,
+        z: UXTarget<BITS>,
+    ) -> (UXTarget<BITS>, UXTarget<BITS>);
 
-    fn add_ux<const BITS: usize>(&mut self, a: UXTarget<BITS>, b: UXTarget<BITS>) -> (UXTarget<BITS>, UXTarget<BITS>);
+    fn add_ux<const BITS: usize>(
+        &mut self,
+        a: UXTarget<BITS>,
+        b: UXTarget<BITS>,
+    ) -> (UXTarget<BITS>, UXTarget<BITS>);
 
-    fn add_many_ux<const BITS: usize>(&mut self, to_add: &[UXTarget<BITS>]) -> (UXTarget<BITS>, UXTarget<BITS>);
+    fn add_many_ux<const BITS: usize>(
+        &mut self,
+        to_add: &[UXTarget<BITS>],
+    ) -> (UXTarget<BITS>, UXTarget<BITS>);
 
     fn add_uxs_with_carry<const BITS: usize>(
         &mut self,
@@ -63,15 +64,22 @@ pub trait CircuitBuilderUX<F: RichField + Extendable<D>, const D: usize> {
         carry: UXTarget<BITS>,
     ) -> (UXTarget<BITS>, UXTarget<BITS>);
 
-    fn mul_ux<const BITS: usize>(&mut self, a: UXTarget<BITS>, b: UXTarget<BITS>) -> (UXTarget<BITS>, UXTarget<BITS>);
+    fn mul_ux<const BITS: usize>(
+        &mut self,
+        a: UXTarget<BITS>,
+        b: UXTarget<BITS>,
+    ) -> (UXTarget<BITS>, UXTarget<BITS>);
 
     // Returns x - y - borrow, as a pair (result, borrow), where borrow is 0 or 1 depending on whether borrowing from the next digit is required (iff y + borrow > x).
-    fn sub_ux<const BITS: usize>(&mut self, x: UXTarget<BITS>, y: UXTarget<BITS>, borrow: UXTarget<BITS>) -> (UXTarget<BITS>, UXTarget<BITS>);
+    fn sub_ux<const BITS: usize>(
+        &mut self,
+        x: UXTarget<BITS>,
+        y: UXTarget<BITS>,
+        borrow: UXTarget<BITS>,
+    ) -> (UXTarget<BITS>, UXTarget<BITS>);
 }
 
-impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderUX<F, D>
-    for CircuitBuilder<F, D>
-{
+impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderUX<F, D> for CircuitBuilder<F, D> {
     fn add_virtual_ux_target<const BITS: usize>(&mut self) -> UXTarget<BITS> {
         UXTarget(self.add_virtual_target())
     }
@@ -85,7 +93,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderUX<F, D>
 
     /// Returns a UXTarget for the value `c`, which is assumed to be at most 32 bits.
     fn constant_ux<const BITS: usize>(&mut self, c: u32) -> UXTarget<BITS> {
-        assert!(c < 1<<BITS);
+        assert!(c < 1 << BITS);
         UXTarget(self.constant(F::from_canonical_u32(c)))
     }
 
@@ -127,17 +135,25 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderUX<F, D>
 
         if let (Some(a), Some(b)) = (first_term_const, z_const) {
             let sum = (a + b).to_canonical_u64();
-            assert!(sum < (1u64<<(BITS * 2)));
-            let modd = 1u64<<BITS;
+            assert!(sum < (1u64 << (BITS * 2)));
+            let modd = 1u64 << BITS;
             let (low, high) = (sum % modd, (sum >> BITS) as u32);
-            return Some((self.constant_ux(low.try_into().expect("Value doesn't fit into u32")), self.constant_ux(high)));
+            return Some((
+                self.constant_ux(low.try_into().expect("Value doesn't fit into u32")),
+                self.constant_ux(high),
+            ));
         }
 
         None
     }
 
     // Returns x * y + z.
-    fn mul_add_ux<const BITS: usize>(&mut self, x: UXTarget<BITS>, y: UXTarget<BITS>, z: UXTarget<BITS>) -> (UXTarget<BITS>, UXTarget<BITS>) {
+    fn mul_add_ux<const BITS: usize>(
+        &mut self,
+        x: UXTarget<BITS>,
+        y: UXTarget<BITS>,
+        z: UXTarget<BITS>,
+    ) -> (UXTarget<BITS>, UXTarget<BITS>) {
         if let Some(result) = self.arithmetic_ux_special_cases(x, y, z) {
             return result;
         }
@@ -155,12 +171,19 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderUX<F, D>
         (output_low, output_high)
     }
 
-    fn add_ux<const BITS: usize>(&mut self, a: UXTarget<BITS>, b: UXTarget<BITS>) -> (UXTarget<BITS>, UXTarget<BITS>) {
+    fn add_ux<const BITS: usize>(
+        &mut self,
+        a: UXTarget<BITS>,
+        b: UXTarget<BITS>,
+    ) -> (UXTarget<BITS>, UXTarget<BITS>) {
         let one = self.one_ux();
         self.mul_add_ux(a, one, b)
     }
 
-    fn add_many_ux<const BITS: usize>(&mut self, to_add: &[UXTarget<BITS>]) -> (UXTarget<BITS>, UXTarget<BITS>) {
+    fn add_many_ux<const BITS: usize>(
+        &mut self,
+        to_add: &[UXTarget<BITS>],
+    ) -> (UXTarget<BITS>, UXTarget<BITS>) {
         match to_add.len() {
             0 => (self.zero_ux(), self.zero_ux()),
             1 => (to_add[0], self.zero_ux()),
@@ -216,13 +239,22 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderUX<F, D>
         (output, output_carry)
     }
 
-    fn mul_ux<const BITS: usize>(&mut self, a: UXTarget<BITS>, b: UXTarget<BITS>) -> (UXTarget<BITS>, UXTarget<BITS>) {
+    fn mul_ux<const BITS: usize>(
+        &mut self,
+        a: UXTarget<BITS>,
+        b: UXTarget<BITS>,
+    ) -> (UXTarget<BITS>, UXTarget<BITS>) {
         let zero = self.zero_ux();
         self.mul_add_ux(a, b, zero)
     }
 
     // Returns x - y - borrow, as a pair (result, borrow), where borrow is 0 or 1 depending on whether borrowing from the next digit is required (iff y + borrow > x).
-    fn sub_ux<const BITS: usize>(&mut self, x: UXTarget<BITS>, y: UXTarget<BITS>, borrow: UXTarget<BITS>) -> (UXTarget<BITS>, UXTarget<BITS>) {
+    fn sub_ux<const BITS: usize>(
+        &mut self,
+        x: UXTarget<BITS>,
+        y: UXTarget<BITS>,
+        borrow: UXTarget<BITS>,
+    ) -> (UXTarget<BITS>, UXTarget<BITS>) {
         let gate = UXSubtractionGate::<F, D, BITS>::new_from_config(&self.config);
         let (row, copy) = self.find_slot(gate, &[], &[]);
 
@@ -237,58 +269,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderUX<F, D>
         let output_borrow = UXTarget(Target::wire(row, gate.wire_ith_output_borrow(copy)));
 
         (output_result, output_borrow)
-    }
-}
-
-#[derive(Debug)]
-struct SplitToU32Generator<F: RichField + Extendable<D>, const D: usize, const BITS: usize> {
-    x: Target,
-    low: UXTarget<BITS>,
-    high: UXTarget<BITS>,
-    _phantom: PhantomData<F>,
-}
-
-impl<F: RichField + Extendable<D>, const D: usize, const BITS: usize> SimpleGenerator<F, D>
-    for SplitToU32Generator<F, D, BITS>
-{
-    fn id(&self) -> String {
-        "SplitToU32Generator".to_string()
-    }
-
-    fn serialize(&self, dst: &mut Vec<u8>, _common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
-        dst.write_target(self.x)?;
-        dst.write_target_ux(self.low)?;
-        dst.write_target_ux(self.high)
-    }
-
-    fn deserialize(src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
-        let x = src.read_target()?;
-        let low = src.read_target_ux()?;
-        let high = src.read_target_ux()?;
-        Ok(Self {
-            x,
-            low,
-            high,
-            _phantom: PhantomData,
-        })
-    }
-
-    fn dependencies(&self) -> Vec<Target> {
-        vec![self.x]
-    }
-
-    fn run_once(
-        &self,
-        witness: &PartitionWitness<F>,
-        out_buffer: &mut GeneratedValues<F>,
-    ) -> Result<()> {
-        let x = witness.get_target(self.x);
-        let x_u64 = x.to_canonical_u64();
-        let low = x_u64 as u32;
-        let high = (x_u64 >> BITS) as u32;
-
-        out_buffer.set_ux_target(self.low, low)?;
-        out_buffer.set_ux_target(self.high, high)
     }
 }
 
